@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>VR</name>
+  <version>0.0.0</version>
+  <description>The AVATAR VR package</description>
+  <maintainer email="a_chanu0612@snu.ac.kr">Chanwoo Ahn</maintainer>
+  <license>"aaa"</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+    <build_type>ament_cmake</build_type>
+    <!-- Other tools can request additional information be placed here -->
+  </export>
+</package>
