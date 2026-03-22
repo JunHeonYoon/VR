@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/Int32.hpp>
+#include <std_msgs/msg/int32_multi_array.hpp>
 #include <std_msgs/msg/String.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
@@ -108,6 +109,12 @@ public:
 	rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr rhand_mode_pub;
 	std_msgs::msg::Int32 lhand_mode_msg;
 	std_msgs::msg::Int32 rhand_mode_msg;
+
+    // off: 0 | on: 1, button idx:[trigger, grip, a, b]
+    rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr lhand_button_pub; 
+	rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr rhand_button_pub;
+	std_msgs::msg::Int32MultiArray lhand_button_msg;
+	std_msgs::msg::Int32MultiArray rhand_button_msg;
 
 	rclcpp::Subscription<std_msgs::msg::String>::SharedPtr tocabi_gui_sub;
 	void tocabiGuiCallback(const std_msgs::msg::String::ConstPtr &msg);
