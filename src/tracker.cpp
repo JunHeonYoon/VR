@@ -6,7 +6,7 @@ HMD::HMD(int arc, char *arv[])
     this->argc_arg = arc;
     this->argv_arg = arv;
 
-    mode = CONTROLLER_ONLY_MODE;
+    mode = ULTIMATE_UPPERBODY_MODE;
     if (arc > 1) mode = std::stoi(arv[1]);
 
     checkHMD = true;
@@ -77,7 +77,7 @@ HMD::HMD(int arc, char *arv[])
     }
     TRACKER_INDEX = new vr::TrackedDeviceIndex_t[trackerNum];
     TRACKER_curEig = new Mat[trackerNum];
-    trackerVizMsg = new geometry_msgs::msg::Pose[trackerNum];
+    trackerVizMsg = new geometry_msgs::Pose[trackerNum];
 
     hmd_init_bool = false;
     pubPose = true;
@@ -119,16 +119,15 @@ std::string GetTrackedDeviceString(vr::TrackedDeviceIndex_t unDevice, vr::Tracke
 /* HMD Initialization IMPLEMENTATION*/
 void HMD::init()
 {
-    if (!node_) {
-        throw std::runtime_error("ROS2 node is not set. Call HMD::set_ros_node() before init().");
-    }
-
-    // publishers (기존 토픽/ QoS 유지)
-    tracker_status_pub = node_->create_publisher<std_msgs::msg::Bool>("TRACKERSTATUS", rclcpp::QoS(1000));
-    tracker_pose_pub   = node_->create_publisher<geometry_msgs::msg::PoseArray>("tracker_pose", rclcpp::QoS(1));
-
-    lhand_mode_pub = node_->create_publisher<std_msgs::msg::Int32>("lhand_mode", rclcpp::QoS(1));  // TODO: check topic name
-    rhand_mode_pub = node_->create_publisher<std_msgs::msg::Int32>("rhand_mode", rclcpp::QoS(1));
+    ros::init(this->argc_arg, this->argv_arg, "HMD");
+    ros::NodeHandle node;
+    // ros::AsyncSpinner spinner(0);
+    // spinner.start();
+    tracker_status_pub = node.advertise<std_msgs::Bool>("TRACKERSTATUS", 1000);
+    tracker_pose_pub   = node.advertise<geometry_msgs::PoseArray>("tracker_pose", 1);
+    
+    lhand_mode_pub = node.advertise<std_msgs::Int32>("lhand_mode", 1);  // TODO: check topic name
+    rhand_mode_pub = node.advertise<std_msgs::Int32>("rhand_mode", 1);
     for(int i = 0; i < 2; i++)
     {
         for(int j = 0; j < 4; j++)
@@ -139,15 +138,8 @@ void HMD::init()
     lhand_grasped = false;
     rhand_grasped = false;
 
-    tocabi_gui_sub = node_->create_subscription<std_msgs::msg::String>("/tocabi/guilog", 1000, std::bind(&HMD::tocabiGuiCallback, this, _1));
+    tocabi_gui_sub = node.subscribe("/tocabi/guilog", 1000, &HMD::tocabiGuiCallback, this);
     calibration_mode = false;
-
-    // (필요한 viz pub들도 여기서 node_로 생성)
-    // hmd_viz_pub = node_->create_publisher<geometry_msgs::msg::Pose>("hmd_viz", rclcpp::QoS(1));
-    // for (int i=0; i<trackerNum; ++i) tracker_viz_pub[i] = node_->create_publisher<geometry_msgs::msg::Pose>(...);
-
-    // 시간 초기화도 node_ 기준
-    init_time_ = node_->now().seconds();
 
     if(mode == HAPTIC_ARM_MODE)
         tracker_pose_msg.poses.resize(5);
@@ -168,16 +160,19 @@ void HMD::init()
         writeFile.close();
     writeFile.open("tracker_log.txt", std::ofstream::out | std::ofstream::app);
     writeFile << std::fixed << std::setprecision(8);
+    init_time_ = ros::Time::now().toSec();
 }
 
 
 void HMD::RunMainLoop()
 {
-    rclcpp::WallRate r(130); // ROS2: WallRate 사용
-    while (rclcpp::ok())
+    ros::Rate r(130); // good
+    // ros::Rate r(100); //
+    while (ros::ok())
     {
         rosPublish();
         r.sleep();
+        ros::spinOnce();
     }
 }
 
@@ -245,7 +240,7 @@ void HMD::checkConnection()
                 continue;
             }
         }
-        
+
         // Only use HMD
         if (!checkControllers && !checkTrackers && HMD_count == 1)
         {
@@ -302,7 +297,7 @@ void HMD::rosPublish()
     // controller : Send rotation & translation parameters(w.r.t current HMD Cordinate)
     HMD_curEig = map2eigen(m_rTrackedDevicePose[HMD_INDEX].mDeviceToAbsoluteTracking.m);
     hmdVizMsg = map2msg(coordinate_robot(HMD_curEig));
-    
+
     allTrackersFine = true;
     if (checkControllers)
     {
@@ -310,7 +305,7 @@ void HMD::rosPublish()
         if (use_ultimate_tracker) LEFTCONTROLLER_curEig *= ultimate_to_tracker3;
         RIGHTCONTROLLER_curEig = map2eigen(m_rTrackedDevicePose[RIGHT_CONTROLLER_INDEX].mDeviceToAbsoluteTracking.m);
         if (use_ultimate_tracker) RIGHTCONTROLLER_curEig *= ultimate_to_tracker3;
-        
+
         leftControllerVizMsg = map2msg(rotate_z(coordinate_robot(LEFTCONTROLLER_curEig), M_PI/2));
         rightControllerVizMsg = map2msg(rotate_z(coordinate_robot(RIGHTCONTROLLER_curEig), -M_PI/2));
         allTrackersFine *= m_rTrackedDevicePose[LEFT_CONTROLLER_INDEX].bPoseIsValid;
@@ -329,7 +324,7 @@ void HMD::rosPublish()
                     button_pressed[0][0] = true;
                     lhand_grasped = !lhand_grasped;
                     lhand_mode_msg.data = lhand_grasped ? 1 : 0;    // 0: Grasp 1: Stretch
-                    lhand_mode_pub->publish(lhand_mode_msg);
+                    lhand_mode_pub.publish(lhand_mode_msg);
                     std::cout << "Left Controller Trigger Pressed!" << std::endl;
                 }
             }
@@ -344,7 +339,7 @@ void HMD::rosPublish()
                 {
                     button_pressed[0][1] = true;
                     lhand_mode_msg.data = 2;    // Five
-                    lhand_mode_pub->publish(lhand_mode_msg);
+                    lhand_mode_pub.publish(lhand_mode_msg);
                     std::cout << "Left Controller Grip Pressed!" << std::endl;
                 }
             }
@@ -359,7 +354,7 @@ void HMD::rosPublish()
                 {
                     button_pressed[0][2] = true;
                     lhand_mode_msg.data = 3;    // ThumbsUp
-                    lhand_mode_pub->publish(lhand_mode_msg);
+                    lhand_mode_pub.publish(lhand_mode_msg);
                     std::cout << "Left Controller X Button Pressed!" << std::endl;
                 }
             }
@@ -374,7 +369,7 @@ void HMD::rosPublish()
                 {
                     button_pressed[0][3] = true;
                     lhand_mode_msg.data = 4;    // V
-                    lhand_mode_pub->publish(lhand_mode_msg);
+                    lhand_mode_pub.publish(lhand_mode_msg);
                     std::cout << "Left Controller Y Button Pressed!" << std::endl;
                 }
             }
@@ -399,7 +394,7 @@ void HMD::rosPublish()
                     button_pressed[1][0] = true;
                     rhand_grasped = !rhand_grasped;
                     rhand_mode_msg.data = rhand_grasped ? 1 : 0;    // 0: Grasp 1: Stretch
-                    rhand_mode_pub->publish(rhand_mode_msg);
+                    rhand_mode_pub.publish(rhand_mode_msg);
                     std::cout << "Right Controller Trigger Pressed!" << std::endl;
                 }
             }
@@ -414,7 +409,7 @@ void HMD::rosPublish()
                 {
                     button_pressed[1][1] = true;
                     rhand_mode_msg.data = 2;    // Five
-                    rhand_mode_pub->publish(rhand_mode_msg);
+                    rhand_mode_pub.publish(rhand_mode_msg);
                     std::cout << "Right Controller Grip Pressed!" << std::endl;
                 }
             }
@@ -429,7 +424,7 @@ void HMD::rosPublish()
                 {
                     button_pressed[1][2] = true;
                     rhand_mode_msg.data = 3;    // ThumbsUp
-                    rhand_mode_pub->publish(rhand_mode_msg);
+                    rhand_mode_pub.publish(rhand_mode_msg);
                     std::cout << "Right Controller A Button Pressed!" << std::endl;
                 }
             }
@@ -444,7 +439,7 @@ void HMD::rosPublish()
                 {
                     button_pressed[1][3] = true;
                     rhand_mode_msg.data = 4;    // V
-                    rhand_mode_pub->publish(rhand_mode_msg);
+                    rhand_mode_pub.publish(rhand_mode_msg);
                     std::cout << "Right Controller B Button Pressed!" << std::endl;
                 }
             }
@@ -476,13 +471,13 @@ void HMD::rosPublish()
     if (pubPose)
     {
         allTrackersFineData.data = allTrackersFine;
-        tracker_status_pub->publish(allTrackersFineData);
+        tracker_status_pub.publish(allTrackersFineData);
         // std::cout << "allTrackersFine: " << allTrackersFine << std::endl;
 
         if (allTrackersFine)
         {
             tracker_pose_msg.header.frame_id="tracker_base";
-            tracker_pose_msg.header.stamp = node_->now();
+            tracker_pose_msg.header.stamp = ros::Time::now();
             switch (mode)
             {
             case HAPTIC_ARM_MODE:
@@ -643,11 +638,11 @@ void HMD::rosPublish()
                 tracker_pose_msg.poses[2] = hmdVizMsg;  // head
                 break;
             }
-
-            tracker_pose_pub->publish(tracker_pose_msg);
+            
+            tracker_pose_pub.publish(tracker_pose_msg);
         }
 
-        cur_time_ = node_->now().seconds();
+        cur_time_ = ros::Time::now().toSec();
         // writeFile << cur_time_ - init_time_ << "\t";
         // for (int i=0; i<trackerNum; i++)
         // {
@@ -659,7 +654,7 @@ void HMD::rosPublish()
 }
 
 
-void HMD::tocabiGuiCallback(const std_msgs::msg::String::ConstPtr &msg)
+void HMD::tocabiGuiCallback(const std_msgs::String::ConstPtr &msg)
 {
     if (msg->data == "RESET POSE CALIBRATION"){
         calibration_mode = true;
@@ -707,9 +702,9 @@ Mat HMD::map2eigen(float array[][4])
     return eigen;
 }
 
-geometry_msgs::msg::Pose HMD::map2msg(Mat array)
+geometry_msgs::Pose HMD::map2msg(Mat array)
 {
-    geometry_msgs::msg::Pose trackerMsg;
+    geometry_msgs::Pose trackerMsg;
     trackerMsg.position.x = array(0, 3);
     trackerMsg.position.y = array(1, 3);
     trackerMsg.position.z = array(2, 3);
@@ -779,7 +774,6 @@ Mat HMD::coordinate_robot(Mat array)
         0, 0, 0, 1;
 
     return vr_to_robot * array * local_coordinate_rotation;
-    // return array;
 }
 
 Mat HMD::coordinate(Mat array)
