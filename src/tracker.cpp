@@ -87,6 +87,11 @@ HMD::HMD(int arc, char *arv[])
                             0, 0, 0, 1;
 
     memset(m_rDevClassChar, 0, sizeof(m_rDevClassChar));
+
+    lhand_joy_msg.axes.resize(4);
+    lhand_joy_msg.buttons.resize(5);
+    rhand_joy_msg.axes.resize(4);
+    rhand_joy_msg.buttons.resize(5);
 }
 
 /* HMD Destructor IMPLEMENTATION*/
@@ -129,6 +134,19 @@ void HMD::init()
 
     lhand_mode_pub = node_->create_publisher<std_msgs::msg::Int32>("lhand_mode", rclcpp::QoS(1));  // TODO: check topic name
     rhand_mode_pub = node_->create_publisher<std_msgs::msg::Int32>("rhand_mode", rclcpp::QoS(1));
+
+    lhand_joy_pub = node_->create_publisher<sensor_msgs::msg::Joy>("lhand_joy", rclcpp::QoS(1));
+    rhand_joy_pub = node_->create_publisher<sensor_msgs::msg::Joy>("rhand_joy", rclcpp::QoS(1));
+
+    // tracker_status_pub = node_->create_publisher<std_msgs::msg::Bool>("TRACKERSTATUS", rclcpp::QoS(rclcpp::KeepLast(1000)).best_effort());
+    // tracker_pose_pub   = node_->create_publisher<geometry_msgs::msg::PoseArray>("tracker_pose", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+
+    // lhand_mode_pub = node_->create_publisher<std_msgs::msg::Int32>("lhand_mode", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+    // rhand_mode_pub = node_->create_publisher<std_msgs::msg::Int32>("rhand_mode", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+
+    // lhand_joy_pub = node_->create_publisher<sensor_msgs::msg::Joy>("lhand_joy", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+    // rhand_joy_pub = node_->create_publisher<sensor_msgs::msg::Joy>("rhand_joy", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+
     for(int i = 0; i < 2; i++)
     {
         for(int j = 0; j < 4; j++)
@@ -159,6 +177,12 @@ void HMD::init()
     eError = vr::VRInitError_None;
     VRSystem = vr::VR_Init(&eError, vr::VRApplication_Background);
 
+    if (eError != vr::VRInitError_None)
+    {
+        VRSystem = nullptr;
+        throw std::runtime_error(std::string("VR_Init failed: ") + vr::VR_GetVRInitErrorAsEnglishDescription(eError));
+    }
+
     std::cout << "Start Connection Check" << std::endl;
     checkConnection();
 
@@ -188,6 +212,7 @@ void HMD::checkConnection()
     std::cout << "Maximum Number of Device that can be tracked: " << vr::k_unMaxTrackedDeviceCount << std::endl;
     std::cout << "Number of trackers to find: " << trackerNum << std::endl;
     std::cout << "Please Connect Your HMD and Six Trackers to Start This Program" << std::endl;
+    vr::VRChaperone()->ResetZeroPose(vr::TrackingUniverseSeated);
     VRSystem->GetDeviceToAbsoluteTrackingPose(vr::TrackingUniverseSeated, 0, m_rTrackedDevicePose, vr::k_unMaxTrackedDeviceCount);
     while (true)
     {
@@ -322,9 +347,11 @@ void HMD::rosPublish()
         // TODO check mode numbers
         if (VRSystem->GetControllerState(LEFT_CONTROLLER_INDEX, &controllerState, sizeof(controllerState)))
         {
-            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_SteamVR_Trigger))
+            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_SteamVR_Trigger)) // left trigger button on
             {
-                if(!button_pressed[0][0])
+                lhand_joy_msg.buttons[0] = 1;
+
+                if(!button_pressed[0][0]) // if previous left trigger button is off 
                 {
                     button_pressed[0][0] = true;
                     lhand_grasped = !lhand_grasped;
@@ -335,12 +362,15 @@ void HMD::rosPublish()
             }
             else
             {
+                lhand_joy_msg.buttons[0] = 0;
                 button_pressed[0][0] = false;
             }
 
-            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip))
+            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip)) // left grip button on
             {
-                if(!button_pressed[0][1])
+                lhand_joy_msg.buttons[1] = 1;
+
+                if(!button_pressed[0][1]) // if previous left grip button is off 
                 {
                     button_pressed[0][1] = true;
                     lhand_mode_msg.data = 2;    // Five
@@ -350,12 +380,15 @@ void HMD::rosPublish()
             }
             else
             {
+                lhand_joy_msg.buttons[1] = 0;
                 button_pressed[0][1] = false;
             }
 
-            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_A))
+            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_A)) // left A button on
             {
-                if(!button_pressed[0][2])
+                lhand_joy_msg.buttons[2] = 1;
+
+                if(!button_pressed[0][2]) // if previous left A button is off 
                 {
                     button_pressed[0][2] = true;
                     lhand_mode_msg.data = 3;    // ThumbsUp
@@ -365,12 +398,15 @@ void HMD::rosPublish()
             }
             else
             {
+                lhand_joy_msg.buttons[2] = 0;
                 button_pressed[0][2] = false;
             }
             
-            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_IndexController_B))
+            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_IndexController_B)) // left B button on
             {
-                if(!button_pressed[0][3])
+                lhand_joy_msg.buttons[3] = 1;
+
+                if(!button_pressed[0][3]) // if previous left B button is off 
                 {
                     button_pressed[0][3] = true;
                     lhand_mode_msg.data = 4;    // V
@@ -380,12 +416,24 @@ void HMD::rosPublish()
             }
             else
             {
+                lhand_joy_msg.buttons[3] = 0;
                 button_pressed[0][3] = false;
             }
-            // if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Axis0))
-            // {
-            //     std::cout << "Left Controller Joystick Pressed!" << std::endl;
-            // }
+
+            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Axis0)) // left joy button on
+            {
+                lhand_joy_msg.buttons[4] = 1;
+            }
+            else
+            {
+                lhand_joy_msg.buttons[4] = 0;
+            }
+
+            lhand_joy_msg.axes[0] = controllerState.rAxis[1].x;
+            lhand_joy_msg.axes[1] = controllerState.rAxis[2].x;
+            lhand_joy_msg.axes[2] = controllerState.rAxis[0].x;
+            lhand_joy_msg.axes[3] = controllerState.rAxis[0].y;
+
             // std::cout << "Left Controller Joystick Value: " << controllerState.rAxis[0].x << ", " << controllerState.rAxis[0].y << std::endl;
             // std::cout << "Left Controller Trigger Value: " << controllerState.rAxis[1].x << std::endl;
             // std::cout << "Left Controller Grip Value: " << controllerState.rAxis[2].x << std::endl;
@@ -394,6 +442,7 @@ void HMD::rosPublish()
         {
             if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_SteamVR_Trigger))
             {
+                rhand_joy_msg.buttons[0] = 1;
                 if(!button_pressed[1][0])
                 {
                     button_pressed[1][0] = true;
@@ -405,11 +454,13 @@ void HMD::rosPublish()
             }
             else
             {
+                rhand_joy_msg.buttons[0] = 0;
                 button_pressed[1][0] = false;
             }
 
             if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip))
             {
+                rhand_joy_msg.buttons[1] = 1;
                 if(!button_pressed[1][1])
                 {
                     button_pressed[1][1] = true;
@@ -420,11 +471,13 @@ void HMD::rosPublish()
             }
             else
             {
+                rhand_joy_msg.buttons[1] = 0;
                 button_pressed[1][1] = false;
             }
             
             if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_A))
             {
+                rhand_joy_msg.buttons[2] = 1;
                 if(!button_pressed[1][2])
                 {
                     button_pressed[1][2] = true;
@@ -435,11 +488,13 @@ void HMD::rosPublish()
             }
             else
             {
+                rhand_joy_msg.buttons[2] = 0;
                 button_pressed[1][2] = false;
             }
 
             if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_IndexController_B))
             {
+                rhand_joy_msg.buttons[3] = 1;
                 if(!button_pressed[1][3])
                 {
                     button_pressed[1][3] = true;
@@ -450,15 +505,30 @@ void HMD::rosPublish()
             }
             else
             {
+                rhand_joy_msg.buttons[3] = 0;
                 button_pressed[1][3] = false;
             }
-            // if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Axis0))
-            // {
-            //     std::cout << "Right Controller Joystick Pressed!" << std::endl;
-            // }
+            if (controllerState.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Axis0)) // right joy button on
+            {
+                rhand_joy_msg.buttons[4] = 1;
+            }
+            else
+            {
+                rhand_joy_msg.buttons[4] = 0;
+            }
+
+            rhand_joy_msg.axes[0] = controllerState.rAxis[1].x;
+            rhand_joy_msg.axes[1] = controllerState.rAxis[2].x;
+            rhand_joy_msg.axes[2] = controllerState.rAxis[0].x;
+            rhand_joy_msg.axes[3] = controllerState.rAxis[0].y;
+
             // std::cout << "Right Controller Joystick Value: " << controllerState.rAxis[0].x << ", " << controllerState.rAxis[0].y << std::endl;
             // std::cout << "Right Controller Trigger Value: " << controllerState.rAxis[1].x << std::endl;
             // std::cout << "Right Controller Grip Value: " << controllerState.rAxis[2].x << std::endl;
+
+            lhand_joy_pub->publish(lhand_joy_msg);
+            rhand_joy_pub->publish(rhand_joy_msg);
+
         }
     }
     if (checkTrackers)
